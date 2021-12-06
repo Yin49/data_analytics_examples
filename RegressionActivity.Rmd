@@ -1,0 +1,292 @@
+
+---
+title: 'DATA-0200 Lab 5 - Dealing with Dirty Data & Regression analysis'
+author: "Kyle Monahan"
+output:
+  pdf_document:
+    toc: yes
+  html_document:
+    toc: yes
+---
+
+```{r setup, include=FALSE, echo=FALSE}
+# continue knitting even if there is an error
+knitr::opts_chunk$set(error = TRUE) 
+```
+
+## Overview
+
+### Introduction 
+
+So far in the course, we have learned the following skills (from Tutorial #2 and #3, along with other in-class work): 
+
+* Describe best practices for data entry and formatting in spreadsheets.
+* Apply best practices to arrange variables and observations in a spreadsheet.
+* Learn to clean real-life datasets for import into a statistical program.
+* Using tidy principles in cleaning and storing your data.
+* Descriptive statistics and measures of central tendency.
+* An introduction to the research process, including citations, searching for papers (see the primer) and how to investigate how datasets are structured. 
+* The requirements to use parameteric (normal) techniques - "RIND"
+* Using correlation to investigate relationships. 
+
+In this tutorial, we will be diving deeper into how to approach a *regression analysis*. Towards this end, we will be using the original dataset that was released by the Flint Water Study in December of 2015. This dataset was selected as this is a real environmental issue that had drastic impacts on people and shed light on broader issues of environmental justice and inequity. 
+
+**Original data:** You can access the original release of the data here: (http://flintwaterstudy.org/2015/12/complete-dataset-lead-results-in-tap-water-for-271-flint-samples/) [http://flintwaterstudy.org/2015/12/complete-dataset-lead-results-in-tap-water-for-271-flint-samples/]
+
+>>> For those who might not know, the Flint Water Crisis started in 2014 when the water supply for the Flint, Michigan area was switched from the Detroit River to the Flint river. Due to insufficient corrosion control measures, improper water treatment, and aging pipes, lead leached into the drinking water. More information here: https://en.wikipedia.org/wiki/Flint_water_crisis
+
+### Goal of this activity 
+In this analysis, we will be investigating the relationship between the **level of lead** measured in household water supplies (in parts per million), and the **demographics of the population** at the ward level in Flint, MI. 
+
+Data Sources: Demographic and socioeconomic variables used in this project derives from the US
+Census 2010 and the 2014 American Community Survey results. Spatial data were derived from the
+2014 US Census TIGER Line database. Flint city wards shapefile was obtained through the City of FlintGIS page. Sampling data was obtained from the citizen science effort organized by the Flint Water Studyteam. All data was processed for analysis in both ArcGIS 10.3 and QGIS Desktop 2.10.1. This process was completed by Aish Venkat and Kyle Monahan. 
+
+## Loading packages
+
+The packages we will install and load are: 
+
+* `tidyverse` contains https://cran.r-project.org/web/packages/tidyverse/index.html multiple packages in the tidyverse family, including packages used in this tutorial: 
+* `dplyr` for data manipulation/engineering and `ggplot` for data visualization.
+* `haven` is used for importing and exporting data files,
+* `survey` is a package specifically designed for analyzing complex surveys.
+
+Installing packages is an important part of working in R. After install, we then load the package in R with `library(packagenamehere)`.
+
+```{r packages, include=TRUE}
+
+#Uncomment the line below if you have installed these.
+#install.packages(c("tidyverse", "haven", "survey"))
+
+library("tidyverse")
+library("haven")
+library("survey") #This isn't needed right now but may be useful for you in the future, if you are working with survey data. 
+```
+
+Next we move on to loading the data. 
+
+## Loading the data 
+
+To get started, we need to load in the data. To make things easier today, I've completed the following tasks: 
+
+1. Joined the demographic data at the level of wards and with the average household lead concentration. 
+2. Exported the attribute table of the resulting joined shapefile as a comma-seperated values (CSV) file. This file is called Flint_Joined.csv
+
+To load the data, we can do the following:
+
+```{r}
+dat <- read.csv(file = "Flint_Joined.csv",header = TRUE)
+
+library(dplyr) #We can use the dplyr::glimpse function to quickly look at the data frame.
+
+glimpse(dat) #Pretty cool function! Thanks, Hadley W!
+```
+
+*Missing data:* So, we have 23 variables (features) and 23 observations. There are actually 35 wards in Flint, MI, but we are missing data for twelve of them. 
+
+>> This is an important point. Our data can be **biased** if we miss important people or locations in the  selection of the sampling sites. This is commonly called **selection bias**. For example, if we were unable to sample in the homes that were not able to bring in a sample to our lab, we might have different results. This would be especially true if those homes were more likely to be exposed to lead, or different in demographic characteristics. This is an important things to consider with environmentally distributed contaminants - are we sampling who we need to sample? And thus, does the resulting data address the research question that I am asking? If there is subtantial selection bias, we may have a different population than we originally wanted.  
+
+*Variable types:* We also see that we have different variable types. Many of the variables are doubles, is a **double**-precision floating point number. We see that `ZipWard` and `OBJECTID` are `int` or integer variables as well. All of the variables are numeric, but the difference between double and int values are in the precision (number of decimals) that are stored. 
+
+*Data dictionary*: Normally, we would look for metadata to go with this data, and piece it together from the two data sources that we used to create the current dataset (demographics from the ACS and the water sampling from the Flint Water Study). However, due to time, I will quickly summarize the variables below. 
+
+The other variables are: 
+* OBJECTID: A unique identifier for each object in a shapefile - remember how we asked about how a shapefile "knows" the boundaries? This is in part, how data are attached to boundaries. 
+* ZipWard: The zipcodes of each ward in Flint, MI. Useful for joining to other datasets by geography. 
+* DrawX: Where X is 1, 2, or 3. This is the average lead concentration in the water, sampled by the Flint Water Study. Note that they are sampling in triplicate, which is standard practice for water sampling. 
+* SampleSize: The size of the sample that was taken from, in mL. 
+* MED_HH_INC: Median Household income.
+* PRC_XXXXX: Percent identifying as a certain race or age group. PRC_OWN_OC and PRC_RNT_OC are the number of people who own or rent their own place. 
+* PRC_UNEMP: The percent of people unemployed. 
+
+>> For your projects, you will want to be sure to know exactly what each variable means, and the units that it was collected in. That's why in Final Project Part 2 we went into so much detail on the data source, since the units and how the data was collected informs the rest of our analysis. 
+
+Great! We have completed looking through and understanding the data. Try to type `View(dat)` to investigate the data for yourself, or just run the code below. 
+
+```{r}
+View(dat)
+```
+
+We can also use `skim()` which is a great feature, highlighted in your Modern Dive text (Chapter 7):
+
+```{r}
+
+#Install and run skimr 
+install.packages("skimr")
+skimr::skim(dat) 
+
+#Note how it gives us a small histogram.
+```
+
+## Descriptive stats - ask the question, "are these reasonable"?
+Now we have to look at descriptive stats of these variables. We want to ascertain if they have reasonable values. This is where identification of outliers, missing data values (-999), and other irregularities would occur.  
+
+```{r}
+corr <- dat %>%
+  select(ZipWard, Draw1, Draw2, Draw3, SampleSize, MED_HH_INC, PRC_WHITE, PRC_BLACK, PRC_ASIAN, PRC_UNEMP, PRC_65_OVR) %>% 
+  cor()
+corr
+```
+
+It might be nicer to look at these as a heatmap. 
+
+```{r}
+#Format the data into a matrix and plot it.
+corr_shape <- reshape2::melt(round(corr,2))
+ggplot(data =corr_shape, aes(x=Var1, y=Var2, fill=value)) + 
+  geom_tile() +
+   scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+   midpoint = 0, limit = c(-1,1), space = "Lab", 
+   name="Pearson\nCorrelation")+
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, 
+    size = 12, hjust = 1))
+```
+
+Note that this is even easier to do with the library `corrplot`:
+
+```{r}
+install.packages("corrplot")
+library(corrplot)
+corrplot(corr, type = "upper", order = "hclust", 
+         tl.col = "black", tl.srt = 45)
+```
+
+Much nicer, huh? We see that there is a moderate association between PRC_WHITE, PRC_BLACK, PRC_ASIAN. There is also a weak association between PRC_WHITE and MED_HH_INCOME. So when we make our model, we would want to choose two of the three demographic factors to include. 
+
+```{r}
+#We can use the pairs() function to look at a large number of scatterplots for our final variables.
+
+corr <- dat %>%
+  select(ZipWard, Draw1, SampleSize, MED_HH_INC, PRC_BLACK, PRC_ASIAN, PRC_UNEMP) %>% 
+  pairs()
+
+```
+
+
+>> Note that different fields have varying expectations for correlation cut offs. I like to use the following, but it may depend on where you are working. Just look at a few recent papers and see what they use!
+
+**Size of Correlation	Interpretation**
+.90 to 1.00 (−.90 to −1.00)	Very high positive (negative) correlation
+.70 to .90 (−.70 to −.90)	High positive (negative) correlation
+.50 to .70 (−.50 to −.70)	Moderate positive (negative) correlation
+.30 to .50 (−.30 to −.50)	Low positive (negative) correlation
+.00 to .30 (.00 to −.30)	negligible correlation
+
+Source: 
+Mukaka, Mavuto M. "A guide to appropriate use of correlation coefficient in medical research." Malawi Medical Journal 24.3 (2012): 69-71.
+https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3576830/
+
+This means we have assessed the risk of multicolinearity in our model, and attempted to address it by removing variables with a moderate and above correlation. It does **not** mean that we have necessarially removed all issues in this model, though. 
+
+## Confounding 
+
+As we mentioned in class with the coffee -> (smoking) cancer relationship, there is a risk of confounding in this data - in addition to the risk of multicolinearity. Learning to detect confounding is complex, but a good start is to compare the univariate (one dependent variable) to a multivariate (many dependent variables) approach. If the coefficients (Estimates) of a variable change, you know it is likely confounded. 
+
+For more information on correlation and confounding, see here: http://www.medicine.mcgill.ca/epidemiology/Joseph/courses/EPIB-621/confounding.pdf 
+
+   
+## Starting simple 
+
+There are multiple ways to build a linear regression model. We start with the most common method: by adding variables in stepwise fashion, and monitoring the change in the model. We aim to build the most parsimonious model, or the model that explains the most variance with the least number of variables. 
+
+>> Note: You may be thinking - this is a bootstrapping or optimization problem! We can solve this with an algorithm. You are entirely correct, and this is another approach. But no need to make it too complex for our small model here. 
+
+### Selecting an outcome
+
+You might note that there are three Draw variables! What does this mean?
+
+```{r}
+means <- c(mean(dat$Draw1),mean(dat$Draw2),mean(dat$Draw3))
+stdev <- c(sd(dat$Draw1),sd(dat$Draw2),sd(dat$Draw3))
+max <- c(max(dat$Draw1),max(dat$Draw2),max(dat$Draw3))
+
+means
+stdev
+max
+
+#Wow it is clear that Draw 1 and Draw 2 have some high values, and Draw 3 is much lower. 
+```
+
+```{r}
+#This is actually due to the method used to collect each sample, as Draw 1, 2 and 3 have increasingly long  
+
+#But are they different? 
+t.test(dat$Draw1,dat$Draw2) #Gives a p-value of 0.2522, do not reject the null, accept alternative
+
+t.test(dat$Draw1,dat$Draw3) #Gives a p-value of 0.0001332, they are different! You can see this by the `mean of x mean of y`
+
+#More information: https://www.r-bloggers.com/two-sample-students-t-test-2/
+
+#Is the variance different?
+var.test(dat$Draw1,dat$Draw2) #Barely significant at p-value 0.02359
+var.test(dat$Draw1,dat$Draw3) #Quite significant at p-value 5.047E-07!
+
+
+```
+So the mean Draw values are different, and it may determine what type of model we create. In this case, Draw1 is most representative, so we will go forward with that one. But this is an important consideration. 
+
+### Creating the linear model 
+
+To start, we will use `Draw1` as our outcome, and our main predictor will be `MED_HH_INC` to investigate the role in income as a predictor for exposure to lead in Flint, MI. 
+
+```{r}
+reg <- lm(dat$Draw1~dat$MED_HH_INC) #Note that the outcome comes first, like y ~ x1 + x2 + x3, etc.
+summary(reg)                        #To look at the values, we called summary()
+```
+
+Well that's not too good, but let's take a look.
+We see that MED_HH_INC is moderately significant (p=0.0438), and the residuals (at the top) look okay (median is close to zero and they look normal). The adjusted R-squred is 0.1406 which means we are capturing 14.06% of the variance in lead levels using just MED_HH_INC alone. The Estimate or coefficient for this model says, for every one unit change in Draw1, you would expect an increase of 0.0007 dollars per year (!). Let's scatter them to look at this, since this means there is a positive association between exposure and income! 
+
+```{r}
+plot(dat$Draw1,dat$MED_HH_INC)
+```
+
+
+Let's try to summarize the results.
+
+```{r}
+install.packages("moderndive")        #A nice toolkit for cleaning up regression analysis
+library(moderndive)
+moderndive::get_regression_table(reg)
+```
+
+```{r}
+#In linear regression, we actually want the residuals (the distance between the points on the line) to be normal. Let's take a look at them:
+
+residuals = residuals.lm(reg)
+dat$residuals <- residuals
+
+ggplot(dat, aes(x = dat$MED_HH_INC, y = dat$residuals)) +
+  geom_point() +
+  labs(x = "Income (in $/yr)", y = "Residual", title = "Residuals vs Household Income")
+
+#This is relatively well distrubuted - no bias or structure. Great! 
+
+```
+
+To check robustness in a multivariate model, we use **Variance Inflation Factors**. 
+
+```{r}
+reg2 <- lm(dat$Draw1~dat$MED_HH_INC+dat$SampleSize) #Note that the outcome comes first, like y ~ x1 + x2 + x3, etc.
+summary(reg2)   
+library(car)
+car::vif(reg2) #Calculates the variance inflation factor, a measure of confounding, the lower the better. The values here near 1.0 are fine. 
+```
+
+Why was SampleSize not significant? 
+
+```{r}
+plot(dat$Draw1,dat$SampleSize)
+
+```
+
+
+### Interaction between variables
+
+```{r}
+reg2 <- lm(dat$Draw1~dat$MED_HH_INC+dat$SampleSize+dat$SampleSize*dat$MED_HH_INC) #Note that the outcome comes first, like y ~ x1 + x2 + x3, etc.
+summary(reg2)   
+library(car)
+car::vif(reg2) #Calculates the variance inflation factor, a measure of confounding, the lower the better. The values here near 1.0 are fine. 
+```
+Now we can add more variables to the model. This part is up to you! Be sure to justify why you select the variables you did, and go through the process of interpreting the model as we did. What did you learn about 
